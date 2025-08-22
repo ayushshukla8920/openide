@@ -1,7 +1,7 @@
 "use client"
-
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Menu, X, Play, Save, Terminal as TerminalIcon } from "lucide-react";
+import io from 'socket.io-client';
+import { Menu, CheckCheck, Play, LogOut, Terminal as TerminalIcon } from "lucide-react";
 import { FileExplorer } from "./file-explorer";
 import { CodeEditor } from "./code-editor";
 import { Terminal } from "./terminal";
@@ -11,8 +11,12 @@ import { cn } from "@/lib/utils";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Toaster, toast } from "sonner";
 import { useMediaQuery } from "@/hooks/use-media-query";
-
-const path = { basename: (p) => p.split('/').pop() };
+import { useDebounce } from "@/hooks/use-debounce";
+const path = {
+    basename: (p) => p.split('/').pop(),
+    dirname: (p) => p.substring(0, p.lastIndexOf('/')),
+    join: (...args) => args.filter(Boolean).join('/'),
+};
 const getLanguageFromFileName = (fileName = '') => {
     const extension = fileName.split('.').pop();
     switch (extension) {
@@ -23,8 +27,8 @@ const getLanguageFromFileName = (fileName = '') => {
         default: return 'python';
     }
 };
-
-export function IDELayout() { 
+let socket;
+export function IDELayout() {
     const [userId, setUserId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const isDesktop = useMediaQuery('(min-width: 768px)');
@@ -35,16 +39,32 @@ export function IDELayout() {
     const [selectedLanguage, setSelectedLanguage] = useState("python");
     const [isSaving, setIsSaving] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
-    
+    const [saved, setsaved] = useState(false);
     const terminalPanelRef = useRef(null);
     const [isTerminalCollapsed, setTerminalCollapsed] = useState(false);
-
-    // No changes to the functions from here...
+    const [dirtyContent, setDirtyContent] = useState(null);
+    const debouncedDirtyContent = useDebounce(dirtyContent, 1500);
+    useEffect(() => {
+        if (debouncedDirtyContent) {
+            handleSave(debouncedDirtyContent.tabId, debouncedDirtyContent.content);
+        }
+    }, [debouncedDirtyContent]);
+    useEffect(() => {
+        socket = io();
+        socket.on('connect', () => {
+            console.log('Connected to custom server!');
+        });
+        socket.on('output', (data) => {
+            setTerminalOutput(prev => [...prev, data]);
+        });
+        return () => {
+            if (socket) socket.disconnect();
+        };
+    }, []);
     useEffect(() => {
         const id = localStorage.getItem("userId");
         if (id) setUserId(id);
     }, []);
-
     const fetchFiles = useCallback(async () => {
         if (!userId) return;
         try {
@@ -59,23 +79,19 @@ export function IDELayout() {
             toast.error("An error occurred while fetching files.");
         }
     }, [userId]);
-
     useEffect(() => { fetchFiles(); }, [userId, fetchFiles]);
-    
     useEffect(() => {
         const activeTab = openTabs.find(tab => tab.id === activeTabId);
         if (activeTab) {
             setSelectedLanguage(getLanguageFromFileName(activeTab.name));
         }
     }, [activeTabId, openTabs]);
-
     const handleFileSelect = async (filePath) => {
         const existingTab = openTabs.find(tab => tab.id === filePath);
         if (existingTab) {
             setActiveTabId(filePath);
             return;
         }
-
         const toastId = toast.loading(`Opening ${path.basename(filePath)}...`);
         try {
             const res = await fetch(`/api/fs?userId=${userId}&path=${encodeURIComponent(filePath)}`);
@@ -86,13 +102,12 @@ export function IDELayout() {
                 setActiveTabId(filePath);
                 toast.dismiss(toastId);
             } else {
-                 toast.error(`Failed to open file: ${data.error}`, { id: toastId });
+                toast.error(`Failed to open file: ${data.error}`, { id: toastId });
             }
         } catch (error) {
             toast.error("An error occurred while opening the file.", { id: toastId });
         }
     };
-
     const handleCreate = async (fullPath, type) => {
         const toastId = toast.loading(`Creating ${type}...`);
         try {
@@ -102,8 +117,8 @@ export function IDELayout() {
                 body: JSON.stringify({ userId, path: fullPath, type }),
             });
             if (res.ok) {
-                 toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} created successfully.`, { id: toastId });
-                 fetchFiles();
+                toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} created successfully.`, { id: toastId });
+                fetchFiles();
             } else {
                 const data = await res.json();
                 toast.error(`Failed to create ${type}: ${data.error}`, { id: toastId });
@@ -112,7 +127,6 @@ export function IDELayout() {
             toast.error(`An error occurred while creating the ${type}.`, { id: toastId });
         }
     };
-    
     const handleTabClose = (tabId) => {
         const newTabs = openTabs.filter(tab => tab.id !== tabId);
         setOpenTabs(newTabs);
@@ -120,71 +134,118 @@ export function IDELayout() {
             setActiveTabId(newTabs.length > 0 ? newTabs[0].id : null);
         }
     };
-
     const handleCodeChange = (newCode, tabId) => {
         const newTabs = openTabs.map(tab =>
             tab.id === tabId ? { ...tab, content: newCode } : tab
         );
         setOpenTabs(newTabs);
+        setDirtyContent({ tabId, content: newCode });
     };
-
-    const handleSave = async () => {
-        const activeTab = openTabs.find(tab => tab.id === activeTabId);
-        if (!activeTab) return;
+    const triggerState = () => {
+        setsaved(true);
+        setTimeout(() => {
+        setsaved(false);
+        }, 1500);
+    };
+    const handleLogout = ()=>{
+        localStorage.removeItem('userId');
+        window.location.reload();
+    }
+    const handleSave = async (tabIdToSave, contentToSave) => {
+        const tabToSave = tabIdToSave
+            ? openTabs.find(tab => tab.id === tabIdToSave)
+            : openTabs.find(tab => tab.id === activeTabId);
+        if (!tabToSave) return;
+        const finalContent = contentToSave ?? tabToSave.content;
         setIsSaving(true);
-        const toastId = toast.loading("Saving file...");
         try {
             const res = await fetch('/api/fs', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, path: activeTab.id, content: activeTab.content })
+                body: JSON.stringify({ userId, path: tabToSave.id, content: finalContent })
             });
             if (res.ok) {
-                toast.success("File saved successfully!", { id: toastId });
+                triggerState();
+                if (dirtyContent && dirtyContent.tabId === tabToSave.id) setDirtyContent(null);
             } else {
-                toast.error("Failed to save file.", { id: toastId });
+                toast.error("Failed to save file.");
             }
         } catch (error) {
-            toast.error("An error occurred while saving.", { id: toastId });
+            toast.error("An error occurred while saving.");
         } finally {
             setIsSaving(false);
         }
     };
-    
-    const handleRun = async () => {
+    const handleRename = async (oldPath, type) => {
+        const newName = prompt("Enter new name:", path.basename(oldPath));
+        if (!newName || newName === path.basename(oldPath)) return;
+        const newPath = path.join(path.dirname(oldPath), newName);
+        const toastId = toast.loading(`Renaming ${type}...`);
+        try {
+            const res = await fetch('/api/fs', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, action: 'rename', oldPath, newPath }),
+            });
+            if (res.ok) {
+                toast.success("Renamed successfully.", { id: toastId });
+                await fetchFiles();
+                const newTabs = openTabs.map(tab => {
+                    if (tab.id === oldPath) {
+                        return { ...tab, id: newPath, name: newName };
+                    }
+                    return tab;
+                });
+                setOpenTabs(newTabs);
+                if (activeTabId === oldPath) {
+                    setActiveTabId(newPath);
+                }
+            } else {
+                toast.error("Rename failed.", { id: toastId });
+            }
+        } catch (error) {
+            toast.error("An error occurred.", { id: toastId });
+        }
+    };
+
+    const handleDelete = async (pathToDelete, type) => {
+        if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+        const toastId = toast.loading(`Deleting ${type}...`);
+        try {
+            const res = await fetch(`/api/fs?userId=${userId}&path=${encodeURIComponent(pathToDelete)}&type=${type}`, {
+                method: 'DELETE',
+            });
+            if (res.ok) {
+                toast.success("Deleted successfully.", { id: toastId });
+                await fetchFiles();
+                handleTabClose(pathToDelete);
+            } else {
+                toast.error("Delete failed.", { id: toastId });
+            }
+        } catch (error) {
+            toast.error("An error occurred.", { id: toastId });
+        }
+    };
+    const handleRun = () => {
         const activeTab = openTabs.find(tab => tab.id === activeTabId);
         if (!activeTab) {
             toast.error("No active file to run.");
             return;
         }
-
-        // --- FIX: Use the state variable to check if collapsed ---
         if (isTerminalCollapsed) {
             terminalPanelRef.current?.expand();
         }
-
-        setIsRunning(true);
-        setTerminalOutput(prev => [...prev, {type: 'info', data: `Executing ${activeTab.name}...`}]);
-
-        try {
-            const res = await fetch('/api/compile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, code: activeTab.content, lang: selectedLanguage })
-            });
-            const result = await res.json();
-             if (result.success) {
-                setTerminalOutput(prev => [...prev, { type: 'success', data: result.output }]);
-            } else {
-                setTerminalOutput(prev => [...prev, { type: 'error', data: result.error }]);
-            }
-        } catch (error) {
-            setTerminalOutput(prev => [...prev, { type: 'error', data: error.message }]);
-        } finally {
-            setIsRunning(false);
-        }
+        setTerminalOutput([]);
+        socket.emit('run-code', {
+            userId,
+            code: activeTab.content,
+            lang: selectedLanguage
+        });
     };
-    
+    const handleTerminalInput = (input) => {
+        socket.emit('terminal-input', input);
+        setTerminalOutput(prev => [...prev, { type: 'input', data: input }]);
+    };
     const handleToggleTerminal = () => {
         const panel = terminalPanelRef.current;
         if (panel) {
@@ -197,7 +258,6 @@ export function IDELayout() {
             }
         }
     };
-
     return (
         <div className="h-screen bg-background text-foreground flex flex-col">
             <Toaster position="top-right" richColors />
@@ -210,7 +270,7 @@ export function IDELayout() {
                 </div>
                 <div className="flex items-center gap-2">
                     <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                        <SelectTrigger className="w-[50px] h-8 bg-card">
+                        <SelectTrigger className="w-[100px] h-8 bg-card justify-end">
                             <SelectValue placeholder="Language" />
                         </SelectTrigger>
                         <SelectContent>
@@ -220,21 +280,26 @@ export function IDELayout() {
                             <SelectItem value="python">Python</SelectItem>
                         </SelectContent>
                     </Select>
-                    <Button variant="ghost" size="sm" onClick={handleSave} disabled={isSaving || !activeTabId}>
-                        <Save className={cn("w-4 h-4", isSaving && "animate-spin")} />
-                    </Button>
                     <Button variant="ghost" size="sm" onClick={handleRun} disabled={isRunning || !activeTabId}>
                         <Play className={cn("w-4 h-4", isRunning && "animate-ping")} />
                     </Button>
+                    <Button variant="ghost" size="sm" onClick={handleLogout}>
+                        <LogOut className={cn("w-4 h-4", isSaving && "animate-spin")} />
+                    </Button>
                 </div>
             </div>
-
             <div className="flex-1 flex overflow-hidden">
                 <PanelGroup direction="horizontal">
                     {sidebarOpen && (
                         <>
                             <Panel defaultSize={isDesktop ? 5 : 40} minSize={15} maxSize={isDesktop ? 15 : 40}>
-                                <FileExplorer files={files} onFileSelect={handleFileSelect} onCreate={handleCreate} />
+                                <FileExplorer
+                                    files={files}
+                                    onFileSelect={handleFileSelect}
+                                    onCreate={handleCreate}
+                                    onRename={handleRename}
+                                    onDelete={handleDelete}
+                                />
                             </Panel>
                             <PanelResizeHandle className="w-1 bg-border hover:bg-primary transition-colors" />
                         </>
@@ -252,17 +317,23 @@ export function IDELayout() {
                             </Panel>
                             <PanelResizeHandle className="h-1 bg-border hover:bg-primary transition-colors" />
                             <Panel ref={terminalPanelRef} defaultSize={30} minSize={10} collapsible={true} onCollapse={(collapsed) => setTerminalCollapsed(collapsed)}>
-                                <Terminal output={terminalOutput} onClear={() => setTerminalOutput([])} />
+                                <Terminal
+                                    output={terminalOutput}
+                                    onClear={() => setTerminalOutput([])}
+                                    onInput={handleTerminalInput}
+                                />
                             </Panel>
                         </PanelGroup>
                     </Panel>
                 </PanelGroup>
             </div>
-
             <div className="bg-[#457EFF] border-t border-border px-4 py-1 text-sm flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
+                    {selectedLanguage.toUpperCase()} &nbsp;&nbsp;&nbsp;&nbsp;UTF-8
                 </div>
                 <button onClick={handleToggleTerminal} className="flex items-center gap-2 hover:bg-accent px-2 py-0.5 rounded transition-colors">
+                    
+                    {saved ? <><CheckCheck className="w-4 h-4" /> Saved&nbsp;&nbsp;</> : ""}
                     <TerminalIcon className="w-4 h-4" />
                     {isTerminalCollapsed ? "Show Terminal" : "Hide Terminal"}
                 </button>

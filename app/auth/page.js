@@ -35,7 +35,8 @@ export default function AuthPage() {
   };
   return (
     <div className="flex min-h-screen items-center justify-center p-4 bg-[#1e1e1e]">
-      <div className="w-full max-w-md bg-[#252526] rounded-2xl shadow-lg px-8 py-10">
+      <div className="w-full max-w-md bg-[#252526] rounded-2xl shadow-lg px-8 py-10 flex flex-col items-center">
+        <img src="/logo.png" className="w-20 h-20 mb-5"></img>
         <h1 className="text-4xl font-bold text-center text-[#d4d4d4] mb-10">Open IDE</h1>
         {message && (
           <div className="mb-4 text-center text-sm text-[#f48771]">{message}</div>

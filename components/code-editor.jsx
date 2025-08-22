@@ -7,7 +7,6 @@ import { cpp } from '@codemirror/lang-cpp';
 import { java } from '@codemirror/lang-java';
 import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
-
 const languageExtensions = {
   js: [javascript({ jsx: true })],
   ts: [javascript({ typescript: true })],
@@ -17,22 +16,17 @@ const languageExtensions = {
   java: [java()],
   py: [python()],
   json: [javascript()],
-  css: [javascript()], // Note: for full support, install @codemirror/lang-css
-  html: [javascript()],// Note: for full support, install @codemirror/lang-html
+  css: [javascript()],
+  html: [javascript()],
 };
-
 const getLanguageExtension = (fileName) => {
     const extension = fileName.split('.').pop();
     return languageExtensions[extension] || [];
 }
-
 export function CodeEditor({ openTabs, activeTabId, onTabClose, onTabClick, onCodeChange }) {
-  
   const activeTab = openTabs.find((tab) => tab.id === activeTabId);
-
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Tab Bar */}
       <div className="flex bg-card border-b border-border overflow-x-auto">
         {openTabs.map((tab) => (
           <div
@@ -57,9 +51,7 @@ export function CodeEditor({ openTabs, activeTabId, onTabClose, onTabClick, onCo
           </div>
         ))}
       </div>
-
-      {/* Editor Content */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative font-bold text-lg">
         {activeTab ? (
           <CodeMirror
             value={activeTab.content}
