@@ -8,57 +8,63 @@ import path from "path";
 const execPromise = util.promisify(exec);
 
 const extensions = {
-    "C": { extension: ".c", compiler: "gcc" },
-    "C++": { extension: ".cpp", compiler: "g++" },
-    "Java": { extension: ".java", compiler: "javac" },
-    "Python": { extension: ".py", compiler: "python3" }
-}
+    "c": { extension: ".c", compiler: "gcc" },
+    "cpp": { extension: ".cpp", compiler: "g++" },
+    "java": { extension: ".java", compiler: "javac" },
+    "python": { extension: ".py", compiler: "python3" }
+};
 
 export const POST = async (req) => {
-    const body = await req.json();
-    let CODE_TO_EXECUTE = body.code;
-    const language = body.lang;
+    const { code, lang, userId } = await req.json();
 
-    const dir = path.join(process.cwd(), "data");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+    if (!userId) {
+        return NextResponse.json({ success: false, error: "User ID is required" }, { status: 400 });
+    }
+
+    const userDir = path.join(process.cwd(), "data", userId);
+    if (!fs.existsSync(userDir)) {
+        fs.mkdirSync(userDir, { recursive: true });
+    }
 
     try {
-        if (language === "Java") {
-            // generate a valid class name
-            const className = "Main_" + Math.floor(Math.random() * 100000);
+        if (lang === "java") {
+            const classNameMatch = code.match(/public\s+class\s+([a-zA-Z_]\w*)/);
+            if (!classNameMatch) {
+                return NextResponse.json({ success: false, error: "No public class found in Java code." }, { status: 400 });
+            }
+            const className = classNameMatch[1];
+            const filePath = path.join(userDir, `${className}.java`);
+            fs.writeFileSync(filePath, code);
 
-            // replace existing public class name with valid class name
-            CODE_TO_EXECUTE = CODE_TO_EXECUTE.replace(/public\s+class\s+\w+/, `public class ${className}`);
-            const filePath = path.join(dir, className + ".java");
-            fs.writeFileSync(filePath, CODE_TO_EXECUTE);
-
-            // compile
             await execPromise(`javac ${filePath}`);
-
-            // run
-            const { stdout, stderr } = await execPromise(`java -cp ${dir} ${className}`);
+            const { stdout, stderr } = await execPromise(`java -cp ${userDir} ${className}`);
             if (stderr) return NextResponse.json({ success: false, error: stderr }, { status: 400 });
-            return NextResponse.json({ success: true, output: stdout }, { status: 200 });
+            return NextResponse.json({ success: true, output: stdout });
 
         } else {
             const uuid = uuidv4();
-            const compiler = extensions[language];
-            const filePath = path.join(dir, uuid + compiler.extension);
-            fs.writeFileSync(filePath, CODE_TO_EXECUTE);
-
-            if (language === "C" || language === "C++") {
-                const outPath = `/data/${uuid}.out`;
-                await execPromise(`${compiler.compiler} ${filePath} -o ${outPath}`);
-                const { stdout, stderr } = await execPromise(outPath);
-                if (stderr) return NextResponse.json({ success: false, error: stderr }, { status: 400 });
-                return NextResponse.json({ success: true, output: stdout }, { status: 200 });
-            } else { // Python
-                const { stdout, stderr } = await execPromise(`${compiler.compiler} ${filePath}`);
-                if (stderr) return NextResponse.json({ success: false, error: stderr }, { status: 400 });
-                return NextResponse.json({ success: true, output: stdout }, { status: 200 });
+            const compiler = extensions[lang];
+            if (!compiler) {
+                return NextResponse.json({ success: false, error: "Unsupported language" }, { status: 400 });
             }
+            const filePath = path.join(userDir, uuid + compiler.extension);
+            fs.writeFileSync(filePath, code);
+
+            let command;
+            if (lang === "c" || lang === "cpp") {
+                const outPath = path.join(userDir, `${uuid}.out`);
+                command = `${compiler.compiler} ${filePath} -o ${outPath} && ${outPath}`;
+            } else { // Python
+                command = `${compiler.compiler} ${filePath}`;
+            }
+            
+            const { stdout, stderr } = await execPromise(command);
+            if (stderr) return NextResponse.json({ success: false, error: stderr }, { status: 400 });
+            return NextResponse.json({ success: true, output: stdout });
         }
     } catch (err) {
-        return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+        // The 'err' object from execPromise often contains stdout and stderr
+        const errorOutput = err.stderr || err.stdout || err.message;
+        return NextResponse.json({ success: false, error: errorOutput }, { status: 500 });
     }
-}
+};

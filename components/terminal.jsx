@@ -1,72 +1,38 @@
 "use client"
+import React, { useEffect, useRef } from "react";
+import { Terminal as TerminalIcon, Trash2 } from "lucide-react";
 
-import  React from "react"
+export function Terminal({ output, onClear }) {
+    const terminalBodyRef = useRef(null);
 
-import { useState } from "react"
-import { TerminalIcon, X, Minus, Square } from "lucide-react"
+    // Auto-scroll to the bottom on new output
+    useEffect(() => {
+        if (terminalBodyRef.current) {
+            terminalBodyRef.current.scrollTop = terminalBodyRef.current.scrollHeight;
+        }
+    }, [output]);
 
-export function Terminal() {
-  const [input, setInput] = useState("")
-  const [history, setHistory] = useState([
-    "Welcome to the integrated terminal!",
-    "$ npm start",
-    "Starting development server...",
-    "Local: http://localhost:3000",
-    "$ ",
-  ])
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (input.trim()) {
-      setHistory((prev) => [...prev, `$ ${input}`, "Command executed successfully", "$ "])
-      setInput("")
-    }
-  }
-
-  return (
-    <div className="h-full bg-card border-t border-border flex flex-col">
-      {/* Terminal Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-muted border-b border-border">
-        <div className="flex items-center gap-2">
-          <TerminalIcon className="w-4 h-4 text-foreground" />
-          <span className="text-sm font-medium text-foreground">Terminal</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button className="p-1 hover:bg-accent rounded transition-colors">
-            <Minus className="w-3 h-3 text-foreground" />
-          </button>
-          <button className="p-1 hover:bg-accent rounded transition-colors">
-            <Square className="w-3 h-3 text-foreground" />
-          </button>
-          <button className="p-1 hover:bg-accent rounded transition-colors">
-            <X className="w-3 h-3 text-foreground" />
-          </button>
-        </div>
-      </div>
-
-      {/* Terminal Content */}
-      <div className="flex-1 p-3 overflow-auto font-mono text-sm">
-        <div className="space-y-1">
-          {history.map((line, index) => (
-            <div key={index} className={line.startsWith("$") ? "text-primary" : "text-foreground"}>
-              {line}
+    return (
+        <div className="h-full bg-background flex flex-col">
+            <div className="flex items-center justify-between px-3 py-2 bg-muted border-b border-border">
+                <div className="flex items-center gap-2">
+                    <TerminalIcon className="w-4 h-4" />
+                    <span className="text-sm font-medium">Terminal</span>
+                </div>
+                <button onClick={onClear} className="p-1 hover:bg-accent rounded transition-colors" title="Clear Terminal">
+                    <Trash2 className="w-4 h-4" />
+                </button>
             </div>
-          ))}
+            <div ref={terminalBodyRef} className="flex-1 p-3 overflow-auto font-mono text-sm whitespace-pre-wrap">
+                {output.map((line, index) => (
+                    <div key={index} className="flex items-start">
+                       <span className="text-gray-500 mr-2 select-none">$</span> 
+                       <span className={line.type === 'error' ? 'text-red-400' : 'text-gray-300'}>
+                         {line.data}
+                       </span>
+                    </div>
+                ))}
+            </div>
         </div>
-
-        {/* Input Line */}
-        <form onSubmit={handleSubmit} className="flex items-center mt-2">
-          <span className="text-primary mr-2">$</span>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="flex-1 bg-transparent text-foreground outline-none"
-            placeholder="Type a command..."
-            autoFocus
-          />
-        </form>
-      </div>
-    </div>
-  )
+    );
 }
