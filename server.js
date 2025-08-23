@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 const fs = require('fs/promises');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const dev = process.env.NODE_ENV !== 'production';
+const dev = false;
 const hostname = 'localhost';
 const port = 3000;
 const app = next({ dev, hostname, port });
@@ -63,7 +63,7 @@ app.prepare().then(() => {
                         socket.emit('output', { type: 'error', data: compileError });
                         await fs.unlink(sourcePath);
                     } else {
-                        runProcess(spawn(outputPath));
+                        runProcess(spawn('stdbuf', ['-o0', outputPath]));
                         childProcess.on('close', () => Promise.all([fs.unlink(sourcePath), fs.unlink(outputPath)]).catch(err => console.error("Cleanup failed:", err)));
                     }
                 });
