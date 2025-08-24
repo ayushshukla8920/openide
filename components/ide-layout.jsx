@@ -12,10 +12,12 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Toaster, toast } from "sonner";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useDebounce } from "@/hooks/use-debounce";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Preview } from "./preview";
 const path = {
-    basename: (p) => p.split('/').pop(),
-    dirname: (p) => p.substring(0, p.lastIndexOf('/')),
+    basename: (p) => p ? p.split('/').pop() : '',
+    dirname: (p) => p ? p.substring(0, p.lastIndexOf('/')) : '',
     join: (...args) => args.filter(Boolean).join('/'),
 };
 const getLanguageFromFileName = (fileName = '') => {
@@ -33,6 +35,8 @@ const getLanguageFromFileName = (fileName = '') => {
 let socket;
 export function IDELayout() {
     const [bottomPanelMode, setBottomPanelMode] = useState('terminal');
+    const [modalState, setModalState] = useState({ isOpen: false, type: 'null', data: {} });
+    const [modalInput, setModalInput] = useState('');
     const [previewContent, setPreviewContent] = useState('');
     const [userId, setUserId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -125,24 +129,14 @@ export function IDELayout() {
             toast.error("An error occurred while opening the file.", { id: toastId });
         }
     };
-    const handleCreate = async (fullPath, type) => {
-        const toastId = toast.loading(`Creating ${type}...`);
-        try {
-            const res = await fetch('/api/fs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, path: fullPath, type }),
-            });
-            if (res.ok) {
-                toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} created successfully.`, { id: toastId });
-                fetchFiles();
-            } else {
-                const data = await res.json();
-                toast.error(`Failed to create ${type}: ${data.error}`, { id: toastId });
-            }
-        } catch (error) {
-            toast.error(`An error occurred while creating the ${type}.`, { id: toastId });
-        }
+    const handleCreate = (fullPath, type) => {
+        const parentPath = path.dirname(fullPath);
+        setModalState({
+            isOpen: true,
+            type: `create_${type}`,
+            data: { parentPath },
+        });
+        setModalInput('');
     };
     const handleTabClose = (tabId) => {
         const newTabs = openTabs.filter(tab => tab.id !== tabId);
@@ -196,55 +190,21 @@ export function IDELayout() {
             setIsSaving(false);
         }
     };
-    const handleRename = async (oldPath, type) => {
-        const newName = prompt("Enter new name:", path.basename(oldPath));
-        if (!newName || newName === path.basename(oldPath)) return;
-        const newPath = path.join(path.dirname(oldPath), newName);
-        const toastId = toast.loading(`Renaming ${type}...`);
-        try {
-            const res = await fetch('/api/fs', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, action: 'rename', oldPath, newPath }),
-            });
-            if (res.ok) {
-                toast.success("Renamed successfully.", { id: toastId });
-                await fetchFiles();
-                const newTabs = openTabs.map(tab => {
-                    if (tab.id === oldPath) {
-                        return { ...tab, id: newPath, name: newName };
-                    }
-                    return tab;
-                });
-                setOpenTabs(newTabs);
-                if (activeTabId === oldPath) {
-                    setActiveTabId(newPath);
-                }
-            } else {
-                toast.error("Rename failed.", { id: toastId });
-            }
-        } catch (error) {
-            toast.error("An error occurred.", { id: toastId });
-        }
+    const handleRename = (oldPath, type) => {
+        setModalState({
+            isOpen: true,
+            type: 'rename',
+            data: { oldPath, type },
+        });
+        setModalInput(path.basename(oldPath));
     };
 
-    const handleDelete = async (pathToDelete, type) => {
-        if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
-        const toastId = toast.loading(`Deleting ${type}...`);
-        try {
-            const res = await fetch(`/api/fs?userId=${userId}&path=${encodeURIComponent(pathToDelete)}&type=${type}`, {
-                method: 'DELETE',
-            });
-            if (res.ok) {
-                toast.success("Deleted successfully.", { id: toastId });
-                await fetchFiles();
-                handleTabClose(pathToDelete);
-            } else {
-                toast.error("Delete failed.", { id: toastId });
-            }
-        } catch (error) {
-            toast.error("An error occurred.", { id: toastId });
-        }
+    const handleDelete = (pathToDelete, type) => {
+        setModalState({
+            isOpen: true,
+            type: 'delete',
+            data: { pathToDelete, type },
+        });
     };
     const handleRun = () => {
         const activeTab = openTabs.find(tab => tab.id === activeTabId);
@@ -288,6 +248,63 @@ export function IDELayout() {
             }
         }
     };
+    const handleModalSubmit = async () => {
+        const { type, data } = modalState;
+        let toastId;
+        try {
+            if (type === 'create_file' || type === 'create_folder') {
+                const itemType = type.split('_')[1];
+                const fullPath = path.join(data.parentPath, modalInput);
+                toastId = toast.loading(`Creating ${itemType}...`);
+                const res = await fetch('/api/fs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, path: fullPath, type: itemType }),
+                });
+                if (!res.ok) throw new Error('Failed to create');
+                toast.success(`${itemType.charAt(0).toUpperCase() + itemType.slice(1)} created.`, { id: toastId });
+                await fetchFiles();
+            }
+            else if (type === 'rename') {
+                const { oldPath } = data;
+                const newPath = path.join(path.dirname(oldPath), modalInput);
+                toastId = toast.loading(`Renaming...`);
+                const res = await fetch('/api/fs', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, action: 'rename', oldPath, newPath }),
+                });
+                if (!res.ok) throw new Error('Failed to rename');
+                toast.success("Renamed successfully.", { id: toastId });
+                await fetchFiles();
+                const newTabs = openTabs.map(tab => tab.id === oldPath ? { ...tab, id: newPath, name: modalInput } : tab);
+                setOpenTabs(newTabs);
+                if (activeTabId === oldPath) setActiveTabId(newPath);
+            }
+            else if (type === 'delete') {
+                const { pathToDelete, type } = data;
+                toastId = toast.loading(`Deleting ${type}...`);
+                const res = await fetch(`/api/fs?userId=${userId}&path=${encodeURIComponent(pathToDelete)}&type=${type}`, {
+                    method: 'DELETE',
+                });
+                if (!res.ok) throw new Error('Failed to delete');
+                toast.success("Deleted successfully.", { id: toastId });
+                await fetchFiles();
+                handleTabClose(pathToDelete);
+            }
+        } catch (error) {
+            toast.error(error.message, { id: toastId });
+        } finally {
+            setModalState({ isOpen: false, type: null, data: {} });
+        }
+    };
+    const modalContent = {
+        'create_file': { title: 'Create New File', description: 'Enter the name for the new file.', showInput: true, buttonText: 'Create' },
+        'create_folder': { title: 'Create New Folder', description: 'Enter the name for the new folder.', showInput: true, buttonText: 'Create' },
+        'rename': { title: 'Rename Item', description: 'Enter the new name.', showInput: true, buttonText: 'Rename' },
+        'delete': { title: 'Delete Item', description: 'This action cannot be undone.', showInput: false, buttonText: 'Delete', buttonVariant: 'destructive' },
+    };
+    const currentModal = modalContent[modalState.type];
     if (!isAppVisible) {
         return (
             <div
@@ -304,6 +321,35 @@ export function IDELayout() {
     }
     return (
         <div className="h-screen bg-background text-foreground flex flex-col">
+            <Dialog open={modalState.isOpen} onOpenChange={(isOpen) => !isOpen && setModalState({ isOpen: false, type: null, data: {} })}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {modalState.type === 'rename' ? `Rename ${modalState.data.type}` :
+                                modalState.type === 'delete' ? `Delete ${modalState.data.type}` :
+                                    currentModal?.title}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {modalState.type === 'delete'
+                                ? `Are you sure you want to delete "${path.basename(modalState.data.pathToDelete)}"? ${currentModal?.description}`
+                                : currentModal?.description
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+                    {currentModal?.showInput && (
+                        <Input
+                            value={modalInput}
+                            onChange={(e) => setModalInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleModalSubmit()}
+                            autoFocus
+                        />
+                    )}
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setModalState({ isOpen: false, type: null, data: {} })}>Cancel</Button>
+                        <Button variant={currentModal?.buttonVariant} onClick={handleModalSubmit}>{currentModal?.buttonText}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <Toaster position="top-right" richColors />
             <div className="bg-card border-b border-border px-4 py-2 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">

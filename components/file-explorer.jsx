@@ -92,17 +92,14 @@ function FileTree({ files, onFileSelect, onRename, onDelete, onNodeClick, select
 export function FileExplorer({ files, onFileSelect, onCreate, onRename, onDelete }) {
   const [selectedNode, setSelectedNode] = useState({ path: '', type: 'folder' });
   const handleCreate = (type) => {
-    const name = prompt(`Enter ${type} name:`);
-    if (name) {
-      let basePath = '';
-      if (selectedNode.path) {
-        basePath = selectedNode.type === 'folder'
-          ? selectedNode.path
+    let basePath = '';
+    if (selectedNode.path) {
+        basePath = selectedNode.type === 'folder' 
+          ? selectedNode.path 
           : selectedNode.path.substring(0, selectedNode.path.lastIndexOf('/'));
-      }
-      const fullPath = basePath ? `${basePath}/${name}` : name;
-      onCreate(fullPath, type);
     }
+    const fullPath = basePath ? `${basePath}/` : '';
+    onCreate(fullPath, type);
   }
   const handleNodeClick = (path, type) => {
     setSelectedNode({ path, type });

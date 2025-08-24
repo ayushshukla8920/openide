@@ -10,6 +10,34 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+import { autocompletion } from '@codemirror/autocomplete';
+const htmlBoilerplate = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+  </head>
+  <body>
+    
+  </body>
+</html>`;
+const htmlCompletion = (context) => {
+  let before = context.matchBefore(/!/);
+  if (!before) return null;
+
+  return {
+    from: before.from,
+    options: [
+      {
+        label: "!",
+        apply: htmlBoilerplate,
+        type: "snippet",
+        detail: "HTML Boilerplate"
+      }
+    ]
+  };
+};
 const languageExtensions = {
   js: [javascript({ jsx: true })],
   html: [html({ extraLangs: [javascript, css] })],
