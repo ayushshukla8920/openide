@@ -434,7 +434,15 @@ export function IDELayout() {
                         {(!isTerminalCollapsed && bottomPanelMode == 'preview') ? "Show Terminal" : (isTerminalCollapsed) ? "Show Terminal" : "Hide Terminal"}
                     </button>
                     <button
-                        onClick={() => { bottomPanelMode == 'preview' ? setBottomPanelMode('terminal') : setBottomPanelMode('preview'); handleRun() }}
+                        onClick={() => {
+                            if(bottomPanelMode == 'preview'){
+                                setBottomPanelMode('terminal')
+                            }
+                            else{
+                                setBottomPanelMode('preview');
+                                handleRun();
+                            }
+                        }}
                         className={cn("items-center flex gap-2 px-2 py-0.5 rounded transition-colors", bottomPanelMode === 'preview' ? 'bg-accent' : 'hover:bg-accent')}
                     >
                         {bottomPanelMode == 'preview' ? <Ban className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}

@@ -40,7 +40,7 @@ const htmlCompletion = (context) => {
 };
 const languageExtensions = {
   js: [javascript({ jsx: true })],
-  html: [html({ extraLangs: [javascript, css] })],
+  html: [html({ extraLangs: [javascript, css] }), autocompletion({ override: [htmlCompletion] })],
   ts: [javascript({ typescript: true })],
   tsx: [javascript({ typescript: true, jsx: true })],
   cpp: [cpp()],
@@ -49,7 +49,6 @@ const languageExtensions = {
   py: [python()],
   json: [javascript()],
   css: [css()],
-  html: [javascript()],
 };
 const getLanguageExtension = (fileName) => {
     const extension = fileName.split('.').pop();
