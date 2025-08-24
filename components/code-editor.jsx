@@ -9,9 +9,10 @@ import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
+import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 const languageExtensions = {
   js: [javascript({ jsx: true })],
-  html: [html()],
+  html: [html({ extraLangs: [javascript, css] })],
   ts: [javascript({ typescript: true })],
   tsx: [javascript({ typescript: true, jsx: true })],
   cpp: [cpp()],
@@ -60,7 +61,10 @@ export function CodeEditor({ openTabs, activeTabId, onTabClose, onTabClick, onCo
             value={activeTab.content}
             height="100%"
             theme={oneDark}
-            extensions={getLanguageExtension(activeTab.name)}
+            extensions={[
+                ...getLanguageExtension(activeTab.name),
+                syntaxHighlighting(defaultHighlightStyle, { fallback: true })
+            ]}
             onChange={(value) => onCodeChange(value, activeTab.id)}
             style={{ height: '100%' }}
           />
