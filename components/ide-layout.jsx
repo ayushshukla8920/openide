@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect, useCallback, useRef } from "react";
 import io from 'socket.io-client';
-import { Menu, CheckCheck, Maximize, Play, LogOut, Terminal as TerminalIcon } from "lucide-react";
+import { Menu, CheckCheck, Maximize, Play, LogOut, Terminal as TerminalIcon, Monitor, Ban } from "lucide-react";
 import { FileExplorer } from "./file-explorer";
 import { CodeEditor } from "./code-editor";
 import { Terminal } from "./terminal";
@@ -12,6 +12,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Toaster, toast } from "sonner";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useDebounce } from "@/hooks/use-debounce";
+import { Preview } from "./preview";
 const path = {
     basename: (p) => p.split('/').pop(),
     dirname: (p) => p.substring(0, p.lastIndexOf('/')),
@@ -24,11 +25,15 @@ const getLanguageFromFileName = (fileName = '') => {
         case 'cpp': return 'cpp';
         case 'java': return 'java';
         case 'py': return 'python';
-        default: return 'python';
+        case 'js': return 'js';
+        case 'html': return 'html';
+        default: return 'js';
     }
 };
 let socket;
 export function IDELayout() {
+    const [bottomPanelMode, setBottomPanelMode] = useState('terminal');
+    const [previewContent, setPreviewContent] = useState('');
     const [userId, setUserId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const isDesktop = useMediaQuery('(min-width: 768px)');
@@ -170,6 +175,9 @@ export function IDELayout() {
         if (!tabToSave) return;
         const finalContent = contentToSave ?? tabToSave.content;
         setIsSaving(true);
+        if (selectedLanguage == 'html' && bottomPanelMode == 'preview') {
+            handleRun();
+        }
         try {
             const res = await fetch('/api/fs', {
                 method: 'PUT',
@@ -244,15 +252,25 @@ export function IDELayout() {
             toast.error("No active file to run.");
             return;
         }
-        if (isTerminalCollapsed) {
-            terminalPanelRef.current?.expand();
+        const language = selectedLanguage;
+        if (language === 'html') {
+            setPreviewContent(activeTab.content);
+            setBottomPanelMode('preview');
+            if (isTerminalCollapsed) {
+                terminalPanelRef.current?.expand();
+            }
+        } else {
+            setBottomPanelMode('terminal');
+            if (isTerminalCollapsed) {
+                terminalPanelRef.current?.expand();
+            }
+            setTerminalOutput([]);
+            socket.emit('run-code', {
+                userId,
+                code: activeTab.content,
+                lang: language
+            });
         }
-        setTerminalOutput([]);
-        socket.emit('run-code', {
-            userId,
-            code: activeTab.content,
-            lang: selectedLanguage
-        });
     };
     const handleTerminalInput = (input) => {
         socket.emit('terminal-input', input);
@@ -304,6 +322,8 @@ export function IDELayout() {
                             <SelectItem value="cpp">C++</SelectItem>
                             <SelectItem value="java">Java</SelectItem>
                             <SelectItem value="python">Python</SelectItem>
+                            <SelectItem value="js">JS</SelectItem>
+                            <SelectItem value="html">HTML</SelectItem>
                         </SelectContent>
                     </Select>
                     <Button variant="ghost" size="sm" onClick={handleRun} disabled={isRunning || !activeTabId}>
@@ -342,12 +362,16 @@ export function IDELayout() {
                                 />
                             </Panel>
                             <PanelResizeHandle className="h-1 bg-border hover:bg-primary transition-colors" />
-                            <Panel ref={terminalPanelRef} defaultSize={30} minSize={10} collapsible={true} onCollapse={(collapsed) => setTerminalCollapsed(collapsed)}>
-                                <Terminal
-                                    output={terminalOutput}
-                                    onClear={() => setTerminalOutput([])}
-                                    onInput={handleTerminalInput}
-                                />
+                            <Panel ref={terminalPanelRef} defaultSize={30} minSize={10} collapsible={true} onCollapse={setTerminalCollapsed}>
+                                {bottomPanelMode === 'terminal' ? (
+                                    <Terminal
+                                        output={terminalOutput}
+                                        onClear={() => setTerminalOutput([])}
+                                        onInput={handleTerminalInput}
+                                    />
+                                ) : (
+                                    <Preview htmlContent={previewContent} />
+                                )}
                             </Panel>
                         </PanelGroup>
                     </Panel>
@@ -357,12 +381,20 @@ export function IDELayout() {
                 <div className="flex items-center gap-4">
                     {selectedLanguage.toUpperCase()} &nbsp;&nbsp;&nbsp;&nbsp;UTF-8
                 </div>
-                <button onClick={handleToggleTerminal} className="flex items-center gap-2 hover:bg-accent px-2 py-0.5 rounded transition-colors">
-
-                    {saved ? <><CheckCheck className="w-4 h-4" /> Saved&nbsp;&nbsp;</> : ""}
-                    <TerminalIcon className="w-4 h-4" />
-                    {isTerminalCollapsed ? "Show Terminal" : "Hide Terminal"}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => { (bottomPanelMode == 'preview') ? setBottomPanelMode('terminal') : handleToggleTerminal(); }} className="items-center flex gap-2 hover:bg-accent px-2 py-0.5 rounded transition-colors">
+                        {saved ? <><CheckCheck className="w-4 h-4" /> Saved&nbsp;&nbsp;</> : ""}
+                        <TerminalIcon className="w-4 h-4" />
+                        {(!isTerminalCollapsed && bottomPanelMode == 'preview') ? "Show Terminal" : (isTerminalCollapsed) ? "Show Terminal" : "Hide Terminal"}
+                    </button>
+                    <button
+                        onClick={() => { bottomPanelMode == 'preview' ? setBottomPanelMode('terminal') : setBottomPanelMode('preview'); handleRun() }}
+                        className={cn("items-center flex gap-2 px-2 py-0.5 rounded transition-colors", bottomPanelMode === 'preview' ? 'bg-accent' : 'hover:bg-accent')}
+                    >
+                        {bottomPanelMode == 'preview' ? <Ban className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+                        {bottomPanelMode == 'preview' ? 'Stop' : 'Go Live'}
+                    </button>
+                </div>
             </div>
         </div>
     );

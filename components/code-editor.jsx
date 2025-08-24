@@ -7,8 +7,11 @@ import { cpp } from '@codemirror/lang-cpp';
 import { java } from '@codemirror/lang-java';
 import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
 const languageExtensions = {
   js: [javascript({ jsx: true })],
+  html: [html()],
   ts: [javascript({ typescript: true })],
   tsx: [javascript({ typescript: true, jsx: true })],
   cpp: [cpp()],
@@ -16,7 +19,7 @@ const languageExtensions = {
   java: [java()],
   py: [python()],
   json: [javascript()],
-  css: [javascript()],
+  css: [css()],
   html: [javascript()],
 };
 const getLanguageExtension = (fileName) => {

@@ -14,7 +14,8 @@ const extensions = {
     "c": { extension: ".c", compiler: "gcc" },
     "cpp": { extension: ".cpp", compiler: "g++" },
     "java": { extension: ".java", compiler: "javac" },
-    "python": { extension: ".py", compiler: "python3" }
+    "python": { extension: ".py", compiler: "python3" },
+    "js": { extension: ".js", runner: "node" }
 };
 const EXECUTION_TIMEOUT = 500000;
 app.prepare().then(() => {
@@ -43,6 +44,13 @@ app.prepare().then(() => {
             if (childProcess) childProcess.kill();
             const userDir = path.join(process.cwd(), "data", userId);
             await fs.mkdir(userDir, { recursive: true });
+            if (lang === "js") {
+                const filePath = path.join(userDir, `${uuidv4()}.js`);
+                await fs.writeFile(filePath, code);
+                runProcess(spawn('node', [filePath]));
+                childProcess.on('close', () => fs.unlink(filePath).catch(err => console.error("Cleanup failed:", err)));
+                return;
+            }
             if (lang === "python") {
                 const filePath = path.join(userDir, `${uuidv4()}.py`);
                 await fs.writeFile(filePath, code);
