@@ -16,7 +16,7 @@ const extensions = {
     "java": { extension: ".java", compiler: "javac" },
     "python": { extension: ".py", compiler: "python3" }
 };
-const EXECUTION_TIMEOUT = 10000;
+const EXECUTION_TIMEOUT = 500000;
 app.prepare().then(() => {
     const httpServer = createServer((req, res) => {
         handler(req, res);

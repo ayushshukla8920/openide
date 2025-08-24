@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect, useCallback, useRef } from "react";
 import io from 'socket.io-client';
-import { Menu, CheckCheck, Play, LogOut, Terminal as TerminalIcon } from "lucide-react";
+import { Menu, CheckCheck, Maximize, Play, LogOut, Terminal as TerminalIcon } from "lucide-react";
 import { FileExplorer } from "./file-explorer";
 import { CodeEditor } from "./code-editor";
 import { Terminal } from "./terminal";
@@ -44,6 +44,18 @@ export function IDELayout() {
     const [isTerminalCollapsed, setTerminalCollapsed] = useState(false);
     const [dirtyContent, setDirtyContent] = useState(null);
     const debouncedDirtyContent = useDebounce(dirtyContent, 1500);
+    const [isAppVisible, setIsAppVisible] = useState(false);
+    function attemptFullscreen() {
+        const element = document.documentElement;
+        if (element.requestFullscreen) element.requestFullscreen();
+        else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
+        else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
+        else if (element.msRequestFullscreen) element.msRequestFullscreen();
+    }
+    const handleEnterApp = () => {
+        attemptFullscreen();
+        setIsAppVisible(true);
+    };
     useEffect(() => {
         if (debouncedDirtyContent) {
             handleSave(debouncedDirtyContent.tabId, debouncedDirtyContent.content);
@@ -144,10 +156,10 @@ export function IDELayout() {
     const triggerState = () => {
         setsaved(true);
         setTimeout(() => {
-        setsaved(false);
+            setsaved(false);
         }, 1500);
     };
-    const handleLogout = ()=>{
+    const handleLogout = () => {
         localStorage.removeItem('userId');
         window.location.reload();
     }
@@ -258,6 +270,20 @@ export function IDELayout() {
             }
         }
     };
+    if (!isAppVisible) {
+        return (
+            <div
+                className="w-full h-screen bg-background text-foreground flex flex-col items-center justify-center cursor-pointer"
+                onClick={handleEnterApp}
+            >
+                <div className="text-center">
+                    <Maximize className="w-16 h-16 mx-auto mb-4 text-gray-500" />
+                    <h1 className="text-2xl font-bold mb-2">Enter Fullscreen Mode</h1>
+                    <p className="text-gray-400">Click anywhere to start your immersive coding session.</p>
+                </div>
+            </div>
+        );
+    }
     return (
         <div className="h-screen bg-background text-foreground flex flex-col">
             <Toaster position="top-right" richColors />
@@ -332,7 +358,7 @@ export function IDELayout() {
                     {selectedLanguage.toUpperCase()} &nbsp;&nbsp;&nbsp;&nbsp;UTF-8
                 </div>
                 <button onClick={handleToggleTerminal} className="flex items-center gap-2 hover:bg-accent px-2 py-0.5 rounded transition-colors">
-                    
+
                     {saved ? <><CheckCheck className="w-4 h-4" /> Saved&nbsp;&nbsp;</> : ""}
                     <TerminalIcon className="w-4 h-4" />
                     {isTerminalCollapsed ? "Show Terminal" : "Hide Terminal"}

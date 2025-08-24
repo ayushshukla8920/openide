@@ -51,7 +51,7 @@ export function CodeEditor({ openTabs, activeTabId, onTabClose, onTabClick, onCo
           </div>
         ))}
       </div>
-      <div className="flex-1 relative font-bold text-lg">
+      <div className="flex-1 relative overflow-hidden font-bold text-lg">
         {activeTab ? (
           <CodeMirror
             value={activeTab.content}
